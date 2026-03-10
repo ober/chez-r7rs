@@ -1,0 +1,36 @@
+;;; (r7rs cond-expand) — standalone cond-expand macro
+;;; For use outside of define-library contexts.
+
+(library (r7rs cond-expand)
+  (export cond-expand)
+  (import (chezscheme)
+          (r7rs features))
+
+  (define-syntax cond-expand
+    (lambda (x)
+      (define (feature-satisfied? req)
+        (cond
+          ((symbol? req)
+           (if (eq? req 'else) #t (memq req r7rs-features)))
+          ((pair? req)
+           (case (car req)
+             ((and) (let loop ((rs (cdr req)))
+                      (or (null? rs) (and (feature-satisfied? (car rs))
+                                          (loop (cdr rs))))))
+             ((or)  (let loop ((rs (cdr req)))
+                      (and (not (null? rs))
+                           (or (feature-satisfied? (car rs)) (loop (cdr rs))))))
+             ((not) (not (feature-satisfied? (cadr req))))
+             ((library) #t)
+             (else #f)))
+          (else #f)))
+      (syntax-case x (else)
+        ((_ (else body ...))
+         #'(begin body ...))
+        ((_ (req body ...) rest ...)
+         (if (feature-satisfied? (syntax->datum #'req))
+             #'(begin body ...)
+             #'(cond-expand rest ...)))
+        ((_)
+         (syntax-violation 'cond-expand "no matching clause" x)))))
+)
